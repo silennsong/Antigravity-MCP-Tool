@@ -1,0 +1,6 @@
+include AGENT_INSTALL.md
+include LICENSE
+include README.md
+include bootstrap.py
+recursive-include antigravity_mcp/templates *.md *.json
+recursive-include antigravity_mcp/schemas *.json

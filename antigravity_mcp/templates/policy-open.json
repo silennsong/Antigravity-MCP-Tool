@@ -1,0 +1,9 @@
+{
+  "$schema": "./antigravity-policy.schema.json",
+  "version": 1,
+  "allow_explicit_model": true,
+  "mode_cli_args": {},
+  "worker_instructions": [],
+  "required_output_sections": [],
+  "forward_env": []
+}

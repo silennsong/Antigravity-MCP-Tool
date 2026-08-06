@@ -1,0 +1,38 @@
+[project]
+name = "antigravity-delegate-mcp"
+version = "0.3.0"
+description = "A global Antigravity CLI MCP entrypoint with project-local policies"
+requires-python = ">=3.10"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "yanzhensong" }]
+keywords = ["mcp", "codex", "antigravity", "gemini"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+]
+
+[project.urls]
+Homepage = "https://github.com/silennsong/Antigravity-MCP-Tool"
+Repository = "https://github.com/silennsong/Antigravity-MCP-Tool.git"
+Issues = "https://github.com/silennsong/Antigravity-MCP-Tool/issues"
+
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+antigravity-delegate-mcp = "antigravity_mcp.cli:main"
+antigravity-delegate-mcp-server = "antigravity_mcp.server:main"
+
+[tool.setuptools.package-data]
+antigravity_mcp = ["templates/*.md", "templates/*.json", "schemas/*.json"]
+
+[tool.unittest]
+start-directory = "tests"

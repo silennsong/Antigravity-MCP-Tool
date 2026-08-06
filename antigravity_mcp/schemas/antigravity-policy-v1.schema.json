@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://antigravity-delegate.local/schemas/policy-v1.json",
+  "title": "Antigravity Delegate Project Policy",
+  "type": "object",
+  "required": ["version"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "version": {"const": 1},
+    "allowed_task_kinds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "allowed_model_tiers": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "allow_explicit_model": {"type": "boolean"},
+    "allowed_modes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "model_tier_task_kinds": {
+      "type": "object",
+      "additionalProperties": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+    },
+    "mode_cli_args": {
+      "type": "object",
+      "additionalProperties": {"type": "array", "items": {"type": "string"}}
+    },
+    "min_task_chars": {"type": "integer", "minimum": 0},
+    "max_task_chars": {"type": "integer", "minimum": 0},
+    "max_output_chars": {"type": "integer", "minimum": 0},
+    "max_timeout_seconds": {"type": "integer", "minimum": 0},
+    "forbidden_task_patterns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["pattern"],
+        "properties": {
+          "pattern": {"type": "string"},
+          "label": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "worker_instructions": {"type": "array", "items": {"type": "string"}},
+    "required_output_sections": {"type": "array", "items": {"type": "string"}},
+    "forward_env": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+  },
+  "additionalProperties": false
+}
