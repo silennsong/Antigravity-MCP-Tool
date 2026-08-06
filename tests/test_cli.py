@@ -120,11 +120,12 @@ class ProjectInitializationTests(unittest.TestCase):
                 cli._configure_read_only_agy_permissions(workspace)
             data = json.loads(settings.read_text(encoding="utf-8"))
             self.assertIn("read_url(google.com)", data["permissions"]["allow"])
+            resolved = workspace.resolve()
             self.assertEqual(
-                data["permissions"]["allow"].count(f"read_file({workspace})"), 1
+                data["permissions"]["allow"].count(f"read_file({resolved})"), 1
             )
             self.assertEqual(
-                data["permissions"]["deny"], [f"write_file({workspace})"]
+                data["permissions"]["deny"], [f"write_file({resolved})"]
             )
 
 
@@ -178,7 +179,19 @@ class InstallTests(unittest.TestCase):
             updated = config_path.read_text(encoding="utf-8")
             self.assertIn('model = "test"', updated)
             self.assertIn("tool_timeout_sec = 86400", updated)
+            self.assertIn('"check_antigravity_readiness"', updated)
             self.assertIn("[features]\nmemories = true", updated)
+
+    def test_install_agy_downloads_official_installer(self) -> None:
+        completed = subprocess.CompletedProcess([], 0, "", "")
+        with patch("antigravity_mcp.cli._agy_path", return_value=None), patch(
+            "antigravity_mcp.cli.urllib.request.urlretrieve"
+        ) as download, patch(
+            "antigravity_mcp.cli._run", return_value=completed
+        ) as run:
+            self.assertEqual(cli.command_install_agy(argparse.Namespace()), 0)
+        self.assertEqual(download.call_args.args[0], cli.AGY_INSTALLER_URL)
+        self.assertEqual(run.call_args.args[0][0], "bash")
 
 
 if __name__ == "__main__":

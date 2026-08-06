@@ -1,3 +1,3 @@
-"""Read-only Antigravity delegation MCP server."""
+"""Policy-neutral Antigravity delegation MCP server with first-run readiness checks."""
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"

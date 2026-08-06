@@ -1,0 +1,36 @@
+{
+  "name": "antigravity-mcp",
+  "version": "0.4.0",
+  "description": "Let Codex selectively delegate suitable subtasks to Gemini through Antigravity CLI.",
+  "author": {
+    "name": "Silen Song",
+    "url": "https://github.com/silennsong"
+  },
+  "homepage": "https://github.com/silennsong/Antigravity-MCP-Tool",
+  "repository": "https://github.com/silennsong/Antigravity-MCP-Tool",
+  "license": "MIT",
+  "keywords": [
+    "antigravity",
+    "codex",
+    "gemini",
+    "mcp",
+    "delegation"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Antigravity Gemini Delegate",
+    "shortDescription": "Route suitable Codex subtasks through Gemini",
+    "longDescription": "Adds portable Antigravity MCP tools, first-run readiness checks, and a Gemini delegation router skill to Codex.",
+    "developerName": "Silen Song",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive"
+    ],
+    "websiteURL": "https://github.com/silennsong/Antigravity-MCP-Tool",
+    "defaultPrompt": [
+      "Complete this task and use Gemini MCP when delegation would be useful.",
+      "Use Gemini MCP for an independent review of this work."
+    ]
+  }
+}

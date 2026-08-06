@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from antigravity_mcp import server
+from antigravity_mcp import adapter, server
 
 
 class WorkspaceTestCase(unittest.TestCase):
@@ -121,6 +121,27 @@ class ProjectPolicyTests(WorkspaceTestCase):
         with self.assertRaisesRegex(server.RequestError, "rejects mode"):
             server.validate_arguments(self.arguments(mode="workspace_write"))
 
+    def test_project_can_ignore_explicitly_negated_forbidden_term(self) -> None:
+        self.write_policy(
+            forbidden_task_patterns=[
+                {
+                    "pattern": "delete|删除",
+                    "label": "destructive work",
+                    "ignore_negated": True,
+                }
+            ]
+        )
+        request = server.validate_arguments(
+            self.arguments(
+                task="Inspect the repository only. Do not delete files; return concise evidence."
+            )
+        )
+        self.assertEqual(request.mode, "read_only")
+        with self.assertRaisesRegex(server.RequestError, "destructive work"):
+            server.validate_arguments(
+                self.arguments(task="Delete generated files and return a concise report afterward.")
+            )
+
     def test_project_rejects_explicit_model(self) -> None:
         self.write_policy()
         with self.assertRaisesRegex(server.RequestError, "explicit model"):
@@ -178,8 +199,10 @@ class RunnerTests(WorkspaceTestCase):
         run.return_value = subprocess.CompletedProcess(
             [], 0, "", 'read_file permission was auto-denied'
         )
-        with self.assertRaisesRegex(server.RequestError, "produced no output"):
+        with self.assertRaises(server.OnboardingError) as raised:
             server.run_delegation(request)
+        self.assertEqual(raised.exception.code, "workspace_read_permission_missing")
+        self.assertTrue(raised.exception.actions)
 
 
 class ProtocolTests(unittest.TestCase):
@@ -195,6 +218,61 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(len(lines), 2)
         self.assertIn("general Antigravity CLI entrypoint", lines[0])
         self.assertIn(server.TOOL_NAME, lines[1])
+        self.assertIn(server.READINESS_TOOL_NAME, lines[1])
+
+    def test_onboarding_error_is_structured_for_agents(self) -> None:
+        result = server._error_result(
+            server.OnboardingError(
+                "missing prerequisite",
+                code="test_missing",
+                actions=["run a command"],
+            )
+        )
+        self.assertTrue(result["structuredContent"]["onboarding_required"])
+        self.assertEqual(result["structuredContent"]["code"], "test_missing")
+        self.assertTrue(result["structuredContent"]["no_changes_made"])
+
+
+class ReadinessTests(WorkspaceTestCase):
+    def test_runtime_command_targets_the_installed_plugin_archive(self) -> None:
+        archive_module = "/portable/plugin/mcp/antigravity_mcp.pyz/antigravity_mcp/server.py"
+        with patch.object(server, "__file__", archive_module):
+            command = server._runtime_cli_command(
+                "doctor", "--workspace", "/portable/project with spaces"
+            )
+        self.assertIn("/portable/plugin/mcp/antigravity_mcp.pyz", command)
+        self.assertIn("'/portable/project with spaces'", command)
+        self.assertNotIn("cd ", command)
+
+    @patch("antigravity_mcp.server._agy_executable", return_value="/fake/agy")
+    @patch(
+        "antigravity_mcp.server.adapter.read_version",
+        return_value=adapter.VersionCheck(raw="1.1.10", parsed=(1, 1, 10)),
+    )
+    @patch("antigravity_mcp.server.subprocess.run")
+    def test_first_run_reports_actions_without_writing(
+        self, run: Mock, _version: Mock, _executable: Mock
+    ) -> None:
+        settings = self.workspace / "global-settings.json"
+        run.return_value = subprocess.CompletedProcess(
+            [], 0, "Gemini Flash Test\nGemini Pro Test\n", ""
+        )
+        with patch.dict(
+            os.environ,
+            {"ANTIGRAVITY_CLI_SETTINGS": str(settings)},
+            clear=False,
+        ):
+            result = server.check_readiness(
+                {"workspace": str(self.workspace), "model_tier": "flash"}
+            )
+        structured = result["structuredContent"]
+        self.assertTrue(structured["ready_to_delegate"])
+        self.assertFalse(structured["safe_project_ready"])
+        self.assertTrue(structured["no_changes_made"])
+        self.assertFalse(settings.exists())
+        commands = [action["command"] for action in structured["actions"]]
+        self.assertTrue(any("init-project" in command for command in commands))
+        self.assertTrue(any("permissions sync" in command for command in commands))
 
 
 if __name__ == "__main__":

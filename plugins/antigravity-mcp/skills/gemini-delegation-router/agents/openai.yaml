@@ -1,0 +1,13 @@
+interface:
+  display_name: "Gemini Delegation Router"
+  short_description: "Route suitable subtasks through Gemini MCP"
+  default_prompt: "Use $gemini-delegation-router to decide which subtasks should be delegated to Gemini."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "antigravity_delegate"
+      description: "Antigravity readiness and Gemini delegation tools"
+
+policy:
+  allow_implicit_invocation: true
