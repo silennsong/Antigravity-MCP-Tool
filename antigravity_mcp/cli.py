@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -14,7 +15,7 @@ from pathlib import Path
 from typing import Sequence
 
 from . import __version__
-from . import adapter, config, server
+from . import adapter, config, onboarding, server
 
 
 MCP_NAME = "antigravity_delegate"
@@ -80,7 +81,9 @@ def _configure_codex_mcp_section(
             f"tool_timeout_sec = {tool_timeout}",
             "enabled = true",
             "required = false",
-            f'enabled_tools = ["{server.TOOL_NAME}"]',
+            "enabled_tools = ["
+            + ", ".join(f'"{name}"' for name in server.ENABLED_TOOL_NAMES)
+            + "]",
             'default_tools_approval_mode = "auto"',
             "",
         ]
@@ -257,48 +260,69 @@ def _write_or_replace_agents_block(path: Path, block: str, force: bool) -> None:
 
 
 def _agy_cli_settings_path() -> Path:
-    override = os.environ.get("ANTIGRAVITY_CLI_SETTINGS", "").strip()
-    return (
-        Path(override).expanduser()
-        if override
-        else Path.home() / ".gemini/antigravity-cli/settings.json"
-    )
+    return onboarding.settings_path()
 
 
 def _configure_read_only_agy_permissions(workspace: Path) -> Path:
-    path = _agy_cli_settings_path()
-    if path.exists():
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise ValueError(f"invalid Antigravity CLI settings {path}: {exc}") from exc
-        if not isinstance(data, dict):
-            raise ValueError(f"Antigravity CLI settings must be an object: {path}")
-    else:
-        data = {}
-    permissions = data.setdefault("permissions", {})
-    if not isinstance(permissions, dict):
-        raise ValueError(f"permissions must be an object in {path}")
-    allow = permissions.setdefault("allow", [])
-    deny = permissions.setdefault("deny", [])
-    if not isinstance(allow, list) or any(not isinstance(item, str) for item in allow):
-        raise ValueError(f"permissions.allow must be a string list in {path}")
-    if not isinstance(deny, list) or any(not isinstance(item, str) for item in deny):
-        raise ValueError(f"permissions.deny must be a string list in {path}")
-    read_rule = f"read_file({workspace})"
-    write_rule = f"write_file({workspace})"
-    if read_rule not in allow:
-        allow.append(read_rule)
-    if write_rule not in deny:
-        deny.append(write_rule)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".json.tmp")
-    temporary.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
-    os.chmod(temporary, 0o600)
-    temporary.replace(path)
-    return path
+    result = onboarding.sync_read_only_permissions(workspace)
+    return Path(result["settings_path"])
+
+
+def _print_permission_audit(audit: dict[str, object]) -> None:
+    print(f"Antigravity permission settings: {audit['settings_path']}")
+    if audit.get("workspace"):
+        print(f"  workspace: {audit['workspace']}")
+        print(f"  read allowed: {str(bool(audit.get('read_allowed'))).lower()}")
+        print(f"  write denied: {str(bool(audit.get('write_denied'))).lower()}")
+    stale = list(audit.get("stale_workspace_paths", []))
+    print(f"  stale workspace paths: {len(stale)}")
+    for path in stale:
+        print(f"    - {path}")
+
+
+def command_permissions(args: argparse.Namespace) -> int:
+    try:
+        if args.permissions_command == "audit":
+            workspace = (
+                Path(args.workspace).expanduser().resolve(strict=True)
+                if args.workspace
+                else None
+            )
+            audit = onboarding.audit_permissions(workspace)
+            _print_permission_audit(audit)
+            if audit.get("stale_workspace_paths"):
+                print(
+                    "Run `antigravity-delegate-mcp permissions prune --stale` to preview "
+                    "removal; add `--yes` only after review."
+                )
+            return 0
+        if args.permissions_command == "sync":
+            workspace = Path(args.workspace).expanduser().resolve(strict=True)
+            audit = onboarding.sync_read_only_permissions(workspace)
+            added = list(audit.get("added_rules", []))
+            print(f"Synchronized explicit read-only permissions for {workspace}")
+            print(f"  added rules: {len(added)}")
+            _print_permission_audit(audit)
+            if audit.get("stale_workspace_paths"):
+                print("WARNING: stale historical paths remain; audit and prune them explicitly.")
+            return 0
+        if args.permissions_command == "prune":
+            result = onboarding.prune_stale_permissions(apply=args.yes)
+            stale_rules = list(result["stale_rules"])
+            if not stale_rules:
+                print("No stale Antigravity file-permission rules found.")
+                return 0
+            print(("Removed" if args.yes else "Would remove") + f" {len(stale_rules)} stale rule(s):")
+            for rule in stale_rules:
+                print(f"  - {rule}")
+            if not args.yes:
+                print("Review the list, then rerun with `--yes` to apply.")
+            return 0
+    except (OSError, ValueError, onboarding.PermissionSettingsError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    print("ERROR: unknown permissions command", file=sys.stderr)
+    return 2
 
 
 def command_init_project(args: argparse.Namespace) -> int:
@@ -439,6 +463,49 @@ def command_doctor(args: argparse.Namespace) -> int:
         report("OK", f"project policy valid: {policy_message}")
     else:
         report("WARN", policy_message)
+        print(
+            "  ACTION: antigravity-delegate-mcp init-project "
+            f"--workspace {shlex.quote(str(workspace))} --profile read-only"
+        )
+
+    agents_path = workspace / "AGENTS.md"
+    if agents_path.is_file():
+        try:
+            agents_text = agents_path.read_text(encoding="utf-8")
+            report(
+                "OK" if AGENTS_START in agents_text else "WARN",
+                "project routing guidance "
+                + ("contains the Antigravity block" if AGENTS_START in agents_text else "has no Antigravity block"),
+            )
+            if AGENTS_START not in agents_text:
+                print("  ACTION: review AGENTS.md, then rerun init-project with --force to append")
+        except OSError as exc:
+            report("WARN", f"cannot inspect AGENTS.md: {exc}")
+    else:
+        report("WARN", "AGENTS.md is missing")
+
+    try:
+        permission_audit = onboarding.audit_permissions(workspace)
+        read_ready = bool(permission_audit.get("read_allowed"))
+        write_guard = bool(permission_audit.get("write_denied"))
+        report(
+            "OK" if read_ready and write_guard else "WARN",
+            "Antigravity read-only permission pair "
+            + ("is ready" if read_ready and write_guard else "is incomplete"),
+        )
+        if not read_ready or not write_guard:
+            print(
+                "  ACTION: antigravity-delegate-mcp permissions sync "
+                f"--workspace {shlex.quote(str(workspace))}"
+            )
+        stale_paths = list(permission_audit.get("stale_workspace_paths", []))
+        if stale_paths:
+            report("WARN", f"{len(stale_paths)} stale historical permission path(s) found")
+            for stale_path in stale_paths:
+                print(f"    - {stale_path}")
+            print("  ACTION: antigravity-delegate-mcp permissions prune --stale")
+    except (OSError, ValueError, onboarding.PermissionSettingsError) as exc:
+        report("FAIL", f"cannot inspect Antigravity permissions: {exc}")
 
     if args.deep and executable:
         try:
@@ -511,6 +578,17 @@ def command_setup(args: argparse.Namespace) -> int:
         )
         if result:
             return result
+    if args.init_project:
+        result = command_init_project(
+            argparse.Namespace(
+                workspace=args.workspace,
+                profile=args.profile,
+                force=args.force,
+                configure_agy_permissions=args.configure_agy_permissions,
+            )
+        )
+        if result:
+            return result
     return command_doctor(
         argparse.Namespace(name=args.name, workspace=args.workspace, deep=args.deep)
     )
@@ -555,6 +633,31 @@ def build_parser() -> argparse.ArgumentParser:
     )
     init.set_defaults(handler=command_init_project)
 
+    permissions = subparsers.add_parser(
+        "permissions", help="Audit or explicitly update Antigravity file permissions"
+    )
+    permission_subparsers = permissions.add_subparsers(
+        dest="permissions_command", required=True
+    )
+    permission_audit = permission_subparsers.add_parser(
+        "audit", help="Read permission readiness and stale paths without changing settings"
+    )
+    permission_audit.add_argument("--workspace")
+    permission_audit.set_defaults(handler=command_permissions)
+    permission_sync = permission_subparsers.add_parser(
+        "sync", help="Explicitly add the current workspace read/deny-write pair"
+    )
+    permission_sync.add_argument("--workspace", required=True)
+    permission_sync.set_defaults(handler=command_permissions)
+    permission_prune = permission_subparsers.add_parser(
+        "prune", help="Preview or remove file rules whose absolute paths no longer exist"
+    )
+    permission_prune.add_argument("--stale", action="store_true", required=True)
+    permission_prune.add_argument(
+        "--yes", action="store_true", help="apply the reviewed removal; default is preview"
+    )
+    permission_prune.set_defaults(handler=command_permissions)
+
     validate = subparsers.add_parser("validate-policy", help="Validate the closest policy")
     validate.add_argument("--workspace", default=".")
     validate.set_defaults(handler=command_validate_policy)
@@ -574,6 +677,23 @@ def build_parser() -> argparse.ArgumentParser:
     setup.add_argument("--deep", action="store_true")
     setup.add_argument("--auth", action="store_true")
     setup.add_argument("--configure-models", action="store_true")
+    setup.add_argument(
+        "--init-project",
+        action="store_true",
+        help="create project-local policy and routing after global setup",
+    )
+    setup.add_argument("--profile", choices=["read-only", "open"], default="read-only")
+    setup.add_argument(
+        "--force",
+        action="store_true",
+        help="append the marked routing block when AGENTS.md already exists",
+    )
+    setup.add_argument(
+        "--agy-permissions",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        dest="configure_agy_permissions",
+    )
     setup.set_defaults(handler=command_setup)
     return parser
 

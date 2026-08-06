@@ -2,6 +2,8 @@
 
 A distributable local-STDIO MCP server that lets Codex invoke Antigravity CLI from any project. The global server is policy-neutral; each project owns its routing guidance and enforceable policy.
 
+Version 0.4 adds a read-only first-run readiness tool. A new or renamed project can expose every missing prerequisite—CLI, authentication, model mapping, project policy, routing guidance, file permissions, and stale historical paths—without silently changing global or project configuration.
+
 ## Install from a release package
 
 Clone the public repository:
@@ -39,6 +41,35 @@ See `AGENT_INSTALL.md` for a prompt that can be copied to a local coding agent.
 
 Project homepage: <https://github.com/silennsong/Antigravity-MCP-Tool>
 
+## First project connection
+
+Restart Codex after installation, open the target project, and ask the Agent:
+
+```text
+Call the MCP tool check_antigravity_readiness for the current workspace before any delegation.
+Report every failed or missing check and the exact suggested commands.
+Do not change global permissions or project files unless I explicitly approve the relevant command.
+```
+
+The readiness tool is read-only. It reports two independent states:
+
+- `ready_to_delegate`: Antigravity CLI, authentication, and the requested model tier work.
+- `safe_project_ready`: the project also has policy, AGENTS routing, and a read/deny-write permission pair.
+
+For a complete explicit first-run setup from the terminal:
+
+```bash
+antigravity-delegate-mcp setup \
+  --workspace /path/to/project \
+  --auth \
+  --configure-models \
+  --init-project \
+  --profile read-only \
+  --deep
+```
+
+If the project already has `AGENTS.md`, inspect it first. Add `--force` only when you want the installer to append its clearly marked Antigravity routing block; existing content is preserved.
+
 ## Commands
 
 ```bash
@@ -47,6 +78,9 @@ antigravity-delegate-mcp auth --workspace /path/to/project
 antigravity-delegate-mcp configure-models
 antigravity-delegate-mcp init-project --workspace /path/to/project --profile read-only
 antigravity-delegate-mcp validate-policy --workspace /path/to/project
+antigravity-delegate-mcp permissions audit --workspace /path/to/project
+antigravity-delegate-mcp permissions sync --workspace /path/to/project
+antigravity-delegate-mcp permissions prune --stale
 antigravity-delegate-mcp doctor --workspace /path/to/project
 antigravity-delegate-mcp doctor --deep --workspace /path/to/project
 ```
@@ -58,13 +92,22 @@ antigravity-delegate-mcp doctor --deep --workspace /path/to/project
 
 Existing `AGENTS.md` files are not overwritten. Use `--force` to append a marked Antigravity section after reviewing the file.
 
-The read-only profile also adds scoped Antigravity CLI grants in `~/.gemini/antigravity-cli/settings.json`: recursive `read_file(<project>)` is allowed and `write_file(<project>)` is denied. Use `--no-agy-permissions` to skip that change.
+The read-only profile also adds scoped Antigravity CLI grants in `~/.gemini/antigravity-cli/settings.json`: recursive `read_file(<project>)` is allowed and `write_file(<project>)` is denied. Use `--no-agy-permissions` to skip that explicit initialization change.
+
+Absolute-path permissions are global Antigravity CLI state. Renaming or moving a project can leave a stale historical rule. The lifecycle is deliberately explicit:
+
+1. `permissions audit` reads current coverage and stale paths without changing anything.
+2. `permissions sync` adds only the supplied workspace's read/deny-write pair.
+3. `permissions prune --stale` is preview-only.
+4. Rerun the prune command with `--yes` only after reviewing every listed rule.
+
+Delegation never edits this permission file automatically. Permission or authentication failures return structured `onboarding_required`, `code`, and `actions` fields so an Agent can explain exactly what is missing.
 
 ## Responsibility split
 
 Global layer:
 
-- Registers one `delegate_to_antigravity` MCP tool.
+- Registers `delegate_to_antigravity` plus the read-only `check_antigravity_readiness` tool.
 - Resolves stored or environment-provided model names.
 - Adapts to the verified `agy` print-mode flags.
 - Applies process timeout/output handling and returns structured metadata.
@@ -78,6 +121,8 @@ Project layer:
 - The closest policy found while walking upward from `workspace` is used.
 
 Without a project policy, the global MCP applies no semantic task restriction.
+
+Readiness may therefore report `ready_to_delegate: true` and `safe_project_ready: false`. This distinction preserves a policy-neutral global entrypoint while making incomplete project onboarding visible.
 
 ## Authentication and model configuration
 
@@ -116,6 +161,15 @@ Antigravity print mode cannot display interactive tool-approval cards. A project
 
 The MCP treats exit code 0 with empty stdout as an error and returns Antigravity's permission explanation instead of reporting false success.
 
+It classifies common missing prerequisites for Agents:
+
+- `antigravity_cli_missing`
+- `model_mapping_missing`
+- `authentication_required`
+- `workspace_read_permission_missing`
+
+Each classified failure includes copy-paste remediation commands and confirms that no configuration change was made.
+
 ## Tool input
 
 ```json
@@ -149,6 +203,8 @@ Globally, `task_kind`, `model_tier`, and `mode` accept project-defined strings. 
 - `forward_env`
 
 Use `validate-policy` or `doctor` before relying on a new policy.
+
+Each forbidden-pattern entry may set `ignore_negated: true` when phrases such as “do not delete files” should not be treated as a request to perform the forbidden action.
 
 ## Build distributable artifacts
 

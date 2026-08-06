@@ -27,6 +27,12 @@ def main() -> int:
     parser.add_argument("--configure-models", action="store_true")
     parser.add_argument("--init-project")
     parser.add_argument("--profile", choices=["read-only", "open"], default="read-only")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="append the marked Antigravity block when the target already has AGENTS.md",
+    )
+    parser.add_argument("--deep", action="store_true", help="run the real delegation probe")
     args = parser.parse_args()
 
     source = Path(__file__).resolve().parent
@@ -50,17 +56,26 @@ def main() -> int:
     if args.configure_models:
         run([str(command), "configure-models"])
     if args.init_project:
-        run(
-            [
-                str(command),
-                "init-project",
-                "--workspace",
-                args.init_project,
-                "--profile",
-                args.profile,
-            ]
-        )
-    run([str(command), "doctor", "--workspace", args.init_project or str(Path.cwd())])
+        init_command = [
+            str(command),
+            "init-project",
+            "--workspace",
+            args.init_project,
+            "--profile",
+            args.profile,
+        ]
+        if args.force:
+            init_command.append("--force")
+        run(init_command)
+    doctor_command = [
+        str(command),
+        "doctor",
+        "--workspace",
+        args.init_project or str(Path.cwd()),
+    ]
+    if args.deep:
+        doctor_command.append("--deep")
+    run(doctor_command)
     return 0
 
 

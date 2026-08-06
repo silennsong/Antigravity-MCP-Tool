@@ -30,7 +30,8 @@
         "required": ["pattern"],
         "properties": {
           "pattern": {"type": "string"},
-          "label": {"type": "string"}
+          "label": {"type": "string"},
+          "ignore_negated": {"type": "boolean", "default": false}
         },
         "additionalProperties": false
       }
