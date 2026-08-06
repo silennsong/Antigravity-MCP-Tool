@@ -10,6 +10,9 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
+import urllib.error
+import urllib.request
 from importlib import resources
 from pathlib import Path
 from typing import Sequence
@@ -19,6 +22,7 @@ from . import adapter, config, onboarding, server
 
 
 MCP_NAME = "antigravity_delegate"
+AGY_INSTALLER_URL = "https://antigravity.google/cli/install.sh"
 AGENTS_START = "<!-- antigravity-delegate:start -->"
 AGENTS_END = "<!-- antigravity-delegate:end -->"
 
@@ -135,6 +139,27 @@ def command_install(args: argparse.Namespace) -> int:
     print(f"Registered global Codex MCP `{args.name}`: {' '.join(server_command)}")
     print(f"Updated timeouts and tool policy in {config_path}")
     print("Restart Codex, then use /mcp or run `codex mcp list`.")
+    return 0
+
+
+def command_install_agy(_args: argparse.Namespace) -> int:
+    """Download and run the official Antigravity CLI installer."""
+    existing = _agy_path()
+    if existing:
+        print(f"Antigravity CLI is already installed: {existing}")
+        return 0
+    try:
+        with tempfile.TemporaryDirectory() as temporary:
+            installer = Path(temporary) / "install.sh"
+            urllib.request.urlretrieve(AGY_INSTALLER_URL, installer)
+            completed = _run(["bash", str(installer)])
+    except (OSError, urllib.error.URLError) as exc:
+        print(f"ERROR: could not download Antigravity CLI installer: {exc}", file=sys.stderr)
+        return 1
+    if completed.returncode:
+        print("ERROR: Antigravity CLI installer failed", file=sys.stderr)
+        return completed.returncode
+    print("Installed the official Antigravity CLI. Run `auth` next.")
     return 0
 
 
@@ -602,6 +627,9 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("server", help="Run the STDIO MCP server").set_defaults(
         handler=lambda _args: server.main()
     )
+    subparsers.add_parser(
+        "install-agy", help="Download and run the official Antigravity CLI installer"
+    ).set_defaults(handler=command_install_agy)
     install = subparsers.add_parser("install", help="Register the global Codex MCP")
     install.add_argument("--name", default=MCP_NAME)
     install.add_argument("--replace", action="store_true")

@@ -234,6 +234,16 @@ class ProtocolTests(unittest.TestCase):
 
 
 class ReadinessTests(WorkspaceTestCase):
+    def test_runtime_command_targets_the_installed_plugin_archive(self) -> None:
+        archive_module = "/portable/plugin/mcp/antigravity_mcp.pyz/antigravity_mcp/server.py"
+        with patch.object(server, "__file__", archive_module):
+            command = server._runtime_cli_command(
+                "doctor", "--workspace", "/portable/project with spaces"
+            )
+        self.assertIn("/portable/plugin/mcp/antigravity_mcp.pyz", command)
+        self.assertIn("'/portable/project with spaces'", command)
+        self.assertNotIn("cd ", command)
+
     @patch("antigravity_mcp.server._agy_executable", return_value="/fake/agy")
     @patch(
         "antigravity_mcp.server.adapter.read_version",

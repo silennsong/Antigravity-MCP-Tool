@@ -21,3 +21,19 @@ https://github.com/silennsong/Antigravity-MCP-Tool
 ```
 
 OAuth, terms, data-use choices, and project trust confirmation remain user-controlled interactive steps.
+
+## Install the bundled Codex Plugin
+
+For Codex versions with Plugin support, prefer the GitHub marketplace package:
+
+```text
+Install the Antigravity MCP Plugin from:
+https://github.com/silennsong/Antigravity-MCP-Tool
+
+1. Run: codex plugin marketplace add silennsong/Antigravity-MCP-Tool
+2. Run: codex plugin add antigravity-mcp@antigravity-tools
+3. Start a new Codex task.
+4. Confirm the gemini-delegation-router Skill and antigravity_delegate MCP are available.
+5. Call check_antigravity_readiness for the current workspace.
+6. Do not silently apply readiness actions involving OAuth, permissions, AGENTS.md, or project policy.
+```

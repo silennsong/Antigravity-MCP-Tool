@@ -182,6 +182,17 @@ class InstallTests(unittest.TestCase):
             self.assertIn('"check_antigravity_readiness"', updated)
             self.assertIn("[features]\nmemories = true", updated)
 
+    def test_install_agy_downloads_official_installer(self) -> None:
+        completed = subprocess.CompletedProcess([], 0, "", "")
+        with patch("antigravity_mcp.cli._agy_path", return_value=None), patch(
+            "antigravity_mcp.cli.urllib.request.urlretrieve"
+        ) as download, patch(
+            "antigravity_mcp.cli._run", return_value=completed
+        ) as run:
+            self.assertEqual(cli.command_install_agy(argparse.Namespace()), 0)
+        self.assertEqual(download.call_args.args[0], cli.AGY_INSTALLER_URL)
+        self.assertEqual(run.call_args.args[0][0], "bash")
+
 
 if __name__ == "__main__":
     unittest.main()

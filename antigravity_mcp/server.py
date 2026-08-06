@@ -574,9 +574,10 @@ def _model_name(request: DelegationRequest) -> str:
             f"{variable} is not configured for model tier `{request.model_tier}`.",
             code="model_mapping_missing",
             actions=[
-                "antigravity-delegate-mcp configure-models",
-                "antigravity-delegate-mcp doctor --workspace "
-                + shlex.quote(str(request.workspace)),
+                _runtime_cli_command("configure-models"),
+                _runtime_cli_command(
+                    "doctor", "--workspace", str(request.workspace)
+                ),
             ],
         )
     return model
@@ -607,11 +608,24 @@ def _agy_executable() -> str:
             f"Antigravity CLI `{configured}` was not found on PATH.",
             code="antigravity_cli_missing",
             actions=[
-                "python3 bootstrap.py --install-agy",
-                "antigravity-delegate-mcp doctor --workspace /absolute/path/to/project",
+                _runtime_cli_command("install-agy"),
             ],
         )
     return found
+
+
+def _runtime_cli_command(*arguments: str) -> str:
+    """Return a copy-paste command that works from package or plugin installs."""
+    runtime_file = Path(__file__).resolve()
+    archive = next(
+        (parent for parent in runtime_file.parents if parent.suffix == ".pyz"),
+        None,
+    )
+    if archive is not None:
+        return shlex.join([sys.executable, str(archive), *arguments])
+    runtime_root = runtime_file.parent.parent
+    command = shlex.join([sys.executable, "-m", "antigravity_mcp", *arguments])
+    return "cd " + shlex.quote(str(runtime_root)) + " && " + command
 
 
 def _readiness_action(command: str, reason: str) -> dict[str, str]:
@@ -644,7 +658,7 @@ def check_readiness(arguments: Any) -> dict[str, Any]:
         checks.append({"name": "antigravity_cli", "status": "missing", "detail": str(exc)})
         actions.append(
             _readiness_action(
-                "python3 bootstrap.py --install-agy",
+                _runtime_cli_command("install-agy"),
                 "Install the official Antigravity CLI before authentication or delegation.",
             )
         )
@@ -679,7 +693,7 @@ def check_readiness(arguments: Any) -> dict[str, Any]:
                 )
                 actions.append(
                     _readiness_action(
-                        "antigravity-delegate-mcp auth --workspace " + shlex.quote(str(workspace)),
+                        _runtime_cli_command("auth", "--workspace", str(workspace)),
                         "Complete Google OAuth, terms, and workspace trust interactively.",
                     )
                 )
@@ -693,7 +707,7 @@ def check_readiness(arguments: Any) -> dict[str, Any]:
             )
             actions.append(
                 _readiness_action(
-                    "antigravity-delegate-mcp auth --workspace " + shlex.quote(str(workspace)),
+                    _runtime_cli_command("auth", "--workspace", str(workspace)),
                     "Complete interactive Antigravity onboarding.",
                 )
             )
@@ -719,7 +733,7 @@ def check_readiness(arguments: Any) -> dict[str, Any]:
     if not configured or (available_models and configured not in available_models):
         actions.append(
             _readiness_action(
-                "antigravity-delegate-mcp configure-models",
+                _runtime_cli_command("configure-models"),
                 f"Choose an exact available model for tier `{model_tier}`.",
             )
         )
@@ -739,9 +753,13 @@ def check_readiness(arguments: Any) -> dict[str, Any]:
             )
             actions.append(
                 _readiness_action(
-                    "antigravity-delegate-mcp init-project --workspace "
-                    + shlex.quote(str(workspace))
-                    + " --profile read-only",
+                    _runtime_cli_command(
+                        "init-project",
+                        "--workspace",
+                        str(workspace),
+                        "--profile",
+                        "read-only",
+                    ),
                     "Create project-local runtime policy and routing guidance. Review an existing AGENTS.md first; add --force only to append the marked block.",
                 )
             )
@@ -750,7 +768,7 @@ def check_readiness(arguments: Any) -> dict[str, Any]:
         checks.append({"name": "project_policy", "status": "invalid", "detail": str(exc)})
         actions.append(
             _readiness_action(
-                "antigravity-delegate-mcp validate-policy --workspace " + shlex.quote(str(workspace)),
+                _runtime_cli_command("validate-policy", "--workspace", str(workspace)),
                 "Repair the reported project policy error before delegation.",
             )
         )
@@ -781,7 +799,14 @@ def check_readiness(arguments: Any) -> dict[str, Any]:
     if not routing_ready and policy.enabled:
         actions.append(
             _readiness_action(
-                "Review AGENTS.md, then run init-project with --force to append the marked block.",
+                _runtime_cli_command(
+                    "init-project",
+                    "--workspace",
+                    str(workspace),
+                    "--profile",
+                    "read-only",
+                    "--force",
+                ),
                 "Keep Codex routing guidance aligned with the enforceable project policy.",
             )
         )
@@ -805,8 +830,9 @@ def check_readiness(arguments: Any) -> dict[str, Any]:
         if not permission_ready:
             actions.append(
                 _readiness_action(
-                    "antigravity-delegate-mcp permissions sync --workspace "
-                    + shlex.quote(str(workspace)),
+                    _runtime_cli_command(
+                        "permissions", "sync", "--workspace", str(workspace)
+                    ),
                     "Explicitly add the current workspace read/deny-write pair.",
                 )
             )
@@ -821,7 +847,7 @@ def check_readiness(arguments: Any) -> dict[str, Any]:
         if stale:
             actions.append(
                 _readiness_action(
-                    "antigravity-delegate-mcp permissions prune --stale",
+                    _runtime_cli_command("permissions", "prune", "--stale"),
                     "Preview obsolete absolute-path rules; rerun with --yes only after review.",
                 )
             )
@@ -931,12 +957,15 @@ def _worker_failure(detail: str, workspace: Path) -> RequestError:
             "Antigravity cannot read this workspace with the current headless permissions.",
             code="workspace_read_permission_missing",
             actions=[
-                "antigravity-delegate-mcp permissions audit --workspace "
-                + shlex.quote(str(workspace)),
-                "antigravity-delegate-mcp permissions sync --workspace "
-                + shlex.quote(str(workspace)),
-                "antigravity-delegate-mcp doctor --deep --workspace "
-                + shlex.quote(str(workspace)),
+                _runtime_cli_command(
+                    "permissions", "audit", "--workspace", str(workspace)
+                ),
+                _runtime_cli_command(
+                    "permissions", "sync", "--workspace", str(workspace)
+                ),
+                _runtime_cli_command(
+                    "doctor", "--deep", "--workspace", str(workspace)
+                ),
             ],
         )
     if any(marker in lowered for marker in ("oauth", "log in", "login required", "unauthenticated")):
@@ -944,9 +973,10 @@ def _worker_failure(detail: str, workspace: Path) -> RequestError:
             "Antigravity authentication is incomplete or expired.",
             code="authentication_required",
             actions=[
-                "antigravity-delegate-mcp auth --workspace " + shlex.quote(str(workspace)),
-                "antigravity-delegate-mcp doctor --deep --workspace "
-                + shlex.quote(str(workspace)),
+                _runtime_cli_command("auth", "--workspace", str(workspace)),
+                _runtime_cli_command(
+                    "doctor", "--deep", "--workspace", str(workspace)
+                ),
             ],
         )
     return RequestError(detail)

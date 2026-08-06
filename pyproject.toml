@@ -31,6 +31,9 @@ build-backend = "setuptools.build_meta"
 antigravity-delegate-mcp = "antigravity_mcp.cli:main"
 antigravity-delegate-mcp-server = "antigravity_mcp.server:main"
 
+[tool.setuptools.packages.find]
+include = ["antigravity_mcp*"]
+
 [tool.setuptools.package-data]
 antigravity_mcp = ["templates/*.md", "templates/*.json", "schemas/*.json"]
 

@@ -4,6 +4,40 @@ A distributable local-STDIO MCP server that lets Codex invoke Antigravity CLI fr
 
 Version 0.4 adds a read-only first-run readiness tool. A new or renamed project can expose every missing prerequisite—CLI, authentication, model mapping, project policy, routing guidance, file permissions, and stale historical paths—without silently changing global or project configuration.
 
+Version 0.4 also packages the MCP and `gemini-delegation-router` Skill as one Codex Plugin. After installation, Codex can implicitly route suitable subtasks when a user says phrases such as “过程中可以调用 Gemini MCP”, while project policy and Codex review remain in control.
+
+## Install the Codex Plugin from GitHub
+
+After this version is merged to the repository's default branch:
+
+```bash
+codex plugin marketplace add silennsong/Antigravity-MCP-Tool
+codex plugin add antigravity-mcp@antigravity-tools
+```
+
+Start a new Codex task after installation so the bundled Skill and MCP tools are loaded. A natural-language trigger is enough:
+
+```text
+完成这个任务，过程中可以调用 Gemini MCP。
+```
+
+Explicit invocation is the most deterministic option:
+
+```text
+使用 $gemini-delegation-router 完成这个任务。
+```
+
+The Plugin bundles its dependency-free Python MCP runtime, so its server does not depend on the repository checkout path or a globally installed Python package. It still needs Python 3.10+ and the Antigravity CLI. On first use, `check_antigravity_readiness` exposes copy-paste commands for any missing CLI installation, OAuth, model mapping, project policy, or scoped workspace permission. Interactive Google consent and project trust remain user-controlled.
+
+For local development of this branch:
+
+```bash
+codex plugin marketplace add /absolute/path/to/Antigravity-MCP-Tool
+codex plugin add antigravity-mcp@antigravity-tools
+```
+
+The marketplace definition is stored in `.agents/plugins/marketplace.json`; the installable package is under `plugins/antigravity-mcp`.
+
 ## Install from a release package
 
 Clone the public repository:
@@ -209,6 +243,7 @@ Each forbidden-pattern entry may set `ignore_negated: true` when phrases such as
 ## Build distributable artifacts
 
 ```bash
+python3 scripts/build_plugin_bundle.py
 python3 -m build
 ```
 
@@ -228,3 +263,13 @@ codex mcp get antigravity_delegate
 ```
 
 Runtime Python dependencies are intentionally empty. Python 3.10 or newer is required.
+
+Plugin-specific validation:
+
+```bash
+python3 scripts/build_plugin_bundle.py
+python3 ~/.codex/skills/.system/skill-creator/scripts/quick_validate.py \
+  plugins/antigravity-mcp/skills/gemini-delegation-router
+python3 ~/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py \
+  plugins/antigravity-mcp
+```
